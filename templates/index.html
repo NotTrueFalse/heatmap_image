@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Synchronized</title>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js" integrity="sha384-c79GN5VsunZvi+Q/WObgk2in0CbZsHnjEqvFxC5DxHn9lTfNce2WW6h2pH6u/kF+" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.5/dist/sweetalert2.all.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.5/dist/sweetalert2.min.css" rel="stylesheet">
+    <style>
+*{
+    padding:0;
+    margin:0;
+}
+body{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100vw;
+    min-height: 100vh;
+}
+h1{
+    margin: 2vw auto;
+}
+#imgs{
+display:flex;
+flex-wrap:wrap;
+justify-content: center;
+align-items:center;
+flex-direction: row;
+width:90%;
+margin:1vw auto;
+}
+.buttons{
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+.buttons button{
+    margin: 0 auto;
+    padding:0.6vw 0.9vw;
+    background:black;
+    color:white;
+    cursor:pointer;
+    border:0px;
+    transition:.4s;
+}
+.buttons button:hover{
+    background: white;
+    color:black;
+}
+.container_img{
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    margin: 1vw;
+    width: fit-content;
+    height: fit-content;
+    border: 1px solid black;
+    border-radius: 10px;
+    overflow: hidden;
+    position:relative;
+}
+.container_img img{
+    width:100%;
+    height:40vh;
+}
+.container_img .heatmap{
+    position: absolute;
+    top:0;
+    left:0;
+    width:100%;
+    height:40vh;
+}
+    </style>
+</head>
+<body>
+    <h1>HEATMAP FLASK SYNC</h1>
+    <div class="buttons">
+        <button id="normal">normal</button>
+        <button id="loop_mode">loop mode</button>
+        <button onclick="document.location.href=''">Reset</button>
+        <button id="stop_sequence">stop</button>
+    </div>
+    <div class="option_module">
+        <label for="range">Acuracy</label>
+        <input type="range" min="1" max="100" value="15" id="accuracy">
+        <span id="accuracy_value">15</span>
+    </div>
+    <div class="option_module">
+        <label for="range">size divided by (for better perf)</label>
+        <input type="range" min="1" max="20" value="5" id="divide_by">
+        <span id="divide_by_value">5</span>
+    </div>
+    <div id="imgs"></div>
+</body>
+<script>
+const socket = io({
+    //transports: ['websocket'],
+    reconnect: true,
+    reconnectAttempts: Infinity,
+});
+document.querySelector("#accuracy").addEventListener("input",() => {
+    socket.emit("accuracy",{"accuracy":parseInt(document.querySelector("#accuracy").value)});
+    document.querySelector("#accuracy_value").innerText = document.querySelector("#accuracy").value;
+});
+document.querySelector("#divide_by").addEventListener("input",() => {
+    socket.emit("divide_by",{"divide_by":parseInt(document.querySelector("#divide_by").value)});
+    document.querySelector("#divide_by_value").innerText = document.querySelector("#divide_by").value;
+});
+
+    socket.on('connect', () => {
+        console.log(socket.id); // 'G5p5...'
+    });
+    document.querySelector('#normal').addEventListener("click",() => {
+        socket.emit('start', {"action": "start", "timestamp": Date.now()});
+    });
+    socket.on("test", (data) => {
+        console.log(data);
+    });
+    document.querySelector('#loop_mode').addEventListener("click",() => {
+        Swal.fire({
+            title: 'changer la heatmap toute les x images (mieux) ?',
+            showConfirmButton: true,
+            showDenyButton:true,
+            denyButtonText:"non",
+            confirmButtonText:"oui",
+            cancelButtonText:"annuler",
+            showCancelButton: true,
+        }).then((result) => {
+            if(result.isCancelled){return;}
+            let rh = result.isConfirmed;
+            Swal.fire({
+                //ask for stream mode
+                title: 'stream mode ?',
+                showConfirmButton: true,
+                showDenyButton:true,
+                denyButtonText:"non",
+                confirmButtonText:"oui",
+                cancelButtonText:"annuler",
+                showCancelButton: true,
+            }).then((result) => {
+                if(result.isCancelled){return;}
+                socket.emit('start', {"action": "loop", "timestamp": Date.now(),"reset_heat":rh, "stream_cam":result.isConfirmed});
+            });
+        });
+    });
+    document.querySelector('#stop_sequence').addEventListener("click",() => {
+        socket.emit('start', {"action": "stop", "timestamp": Date.now()});
+    });
+
+    socket.on("progress", (data) => {
+        //console.log(data);
+        if("progress" in data){
+            document.querySelector("h1").innerText = data["data"]+", progress: "+data["progress"]+"/"+data["total"];
+            return;
+        }
+        document.querySelector("h1").innerText = data["data"];
+    });
+    socket.on('image', (data) => {
+        raw = data["raw"];
+        time = data["timestamp"];
+        console.log("[+]Images ",Date(time));
+            var container = document.getElementById('container_img_'+data["plus"]["id"]);
+            if(!container){
+                var container = document.createElement("div");
+                container.className = "container_img";
+                container.id = "container_img_"+data["plus"]["id"];
+                var text_plus = document.createElement("h1");
+                var img = document.createElement("img");
+                img.src = "data:image/png;base64,"+raw;
+                img.title = time;
+                img.id = "loop";
+                if(data["plus"]["id"]=="actual"){
+                    var heatmap = document.createElement("img");
+                    heatmap.className = "heatmap";
+                    container.appendChild(heatmap);
+                }
+                text_plus.innerText = data["plus"]["message"];
+                container.appendChild(img);
+                container.appendChild(text_plus);
+                text_plus.id = "text_plus";
+                document.getElementById("imgs").appendChild(container);
+            }else{
+                var img = container.querySelector("#loop");
+                var heatmap_over = container.querySelector(".heatmap");
+                if(heatmap_over && document.querySelector("#container_img_heatmap")){
+                    let heatmap = document.querySelector("#container_img_heatmap #loop");
+                    heatmap_over.src = heatmap.src;
+                }
+                img.src = "data:image/png;base64,"+raw;
+                img.title = time;
+                text_plus = container.querySelector("#text_plus");
+                text_plus.innerText = data["plus"]["message"];
+            }
+
+            return;
+        });
+
+    socket.on('after connect', function(msg){
+       console.log('After connect', msg);
+    });
+    socket.on('disconnect', function(msg){
+       console.log('disconnect', msg);
+    });
+</script>
+</html>

@@ -1,0 +1,6 @@
+requests
+pillow
+flask
+flask_socketio
+opencv-python
+datetime
